@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 #TESTTESTTESTTESTSETETESETET
+#충돌충돌충돌
 """Evaluation for CIFAR-10.
 
 Accuracy:

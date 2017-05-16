@@ -20,10 +20,15 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-
+from PIL import Image
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+import numpy as np
 
+left = 0 # Set the left-most edge
+upper = 0 # Set the top-most edge
+imgNum= 0
+saveImage=False
 # Process images of this size. Note that this differs from the original CIFAR
 # image size of 32 x 32. If one alters this number, then the entire model
 # architecture will change and any model would need to be retrained.
@@ -32,7 +37,7 @@ IMAGE_SIZE = 192
 # Global constants describing the CIFAR-10 data set.
 NUM_CLASSES = 2
 NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 50
-NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 2
+NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 500
 
 
 def read_cifar10(filename_queue):
@@ -99,7 +104,7 @@ def read_cifar10(filename_queue):
 
 
 def _generate_image_and_label_batch(image, label, min_queue_examples,
-                                    batch_size, shuffle):
+                                    batch_size, shuffle, org_image):
   """Construct a queued batch of images and labels.
 
   Args:
@@ -134,7 +139,7 @@ def _generate_image_and_label_batch(image, label, min_queue_examples,
   # Display the training images in the visualizer.
   tf.summary.image('images', images)
 
-  return images, tf.reshape(label_batch, [batch_size])
+  return images, tf.reshape(label_batch, [batch_size]),org_image
 
 
 def distorted_inputs(data_dir, batch_size):
@@ -196,7 +201,8 @@ def distorted_inputs(data_dir, batch_size):
   # Generate a batch of images and labels by building up a queue of examples.
   return _generate_image_and_label_batch(float_image, read_input.label,
                                          min_queue_examples, batch_size,
-                                         shuffle=True)
+                                         True, reshaped_image)
+  
 
 
 def inputs(eval_data, data_dir, batch_size):
@@ -252,4 +258,70 @@ def inputs(eval_data, data_dir, batch_size):
   # Generate a batch of images and labels by building up a queue of examples.
   return _generate_image_and_label_batch(float_image, read_input.label,
                                          min_queue_examples, batch_size,
-                                         shuffle=True)
+                                         True, reshaped_image)
+
+def multiply_sliced_input(img, outdir, imageWidth,imageHeight,sliceWidth,sliceHeight,batch_size):
+
+    left=0
+    upper=0
+    imgNum=0
+    croped_height=0
+    croped_width =0
+    num_examples_per_epoch = NUM_EXAMPLES_PER_EPOCH_FOR_EVAL
+    min_fraction_of_examples_in_queue = 0.4
+    
+    img = Image.open(img) # Load image
+    org_imageWidth, org_imageHeight = img.size # Get image dimensions
+    imgNum=(int(org_imageWidth/sliceWidth)+1)*(int(org_imageHeight/sliceHeight)+1)
+    original_image=[]
+    i=0
+    while (left < org_imageWidth):
+        while (upper < org_imageHeight):
+
+            # If the bottom and right of the cropping box overruns the image.
+            if (upper + sliceHeight > org_imageHeight and left + sliceWidth > org_imageWidth):
+                bbox = (left, upper, org_imageWidth, org_imageHeight)
+            # If the right of the cropping box overruns the image
+            elif (left + sliceWidth > org_imageWidth):
+                bbox = (left, upper, org_imageWidth, upper + sliceHeight)
+            # If the bottom of the cropping box overruns the image
+            elif (upper + sliceHeight > org_imageHeight):
+                bbox = (left, upper, left + sliceWidth, org_imageHeight)
+            # If the entire cropping box is inside the image,
+            # proceed normally.
+            else:
+                bbox = (left, upper, left + sliceWidth, upper + sliceHeight)
+            working_slice = img.crop(bbox) # Crop image based on created bounds
+            # Save new cropped image.
+            #new_image = working_slice.resize((imageHeight,imageWidth), Image.ANTIALIAS)            
+            if(saveImage==True):
+                working_slice.save( outdir+'/'+ str(i) + '.jpg')   
+            x=np.array(list(working_slice.getdata()))            
+            temp=np.reshape(x,(imageHeight, imageWidth,3))
+            original_image.append(temp)                      
+            i=i+1
+            upper += sliceHeight 
+        left += sliceWidth
+        upper = 0
+    original_image=np.array(original_image)    
+    final_images= tf.convert_to_tensor(original_image)
+    final_images = tf.cast(final_images, tf.float32)
+
+    org_images = tf.convert_to_tensor(original_image)
+    org_images = tf.cast(org_images, tf.float32)
+
+    min_fraction_of_examples_in_queue = 0.4
+    min_queue_examples = int(num_examples_per_epoch *min_fraction_of_examples_in_queue)
+    return _generate_image_batch(final_images, min_queue_examples,batch_size,org_images)
+
+    
+def _generate_image_batch(image, min_queue_examples,batch_size, org_image):
+ 
+  num_preprocess_threads = 1
+  images = tf.train.batch([image],batch_size=batch_size,
+                                       num_threads=num_preprocess_threads,
+                                       capacity=min_queue_examples + 3 * batch_size,enqueue_many=True)
+  # Display the training images in the visualizer.
+  #tf.summary.image('sliced_images', images)
+
+  return images ,org_image

@@ -48,7 +48,7 @@ import cifar10_input
 FLAGS = tf.app.flags.FLAGS
 
 # Basic model parameters.
-tf.app.flags.DEFINE_integer('batch_size', 20,
+tf.app.flags.DEFINE_integer('batch_size', 1,
                             """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_string('data_dir', os.getcwd(),
                            """Path to the CIFAR-10 data directory.""")
@@ -152,12 +152,12 @@ def distorted_inputs():
   if not FLAGS.data_dir:
     raise ValueError('Please supply a data_dir')
   data_dir = os.path.join(FLAGS.data_dir,'data')
-  images, labels = cifar10_input.distorted_inputs(data_dir=data_dir,
+  images, labels ,reshaped_image= cifar10_input.distorted_inputs(data_dir=data_dir,
                                                   batch_size=FLAGS.batch_size)
   if FLAGS.use_fp16:
     images = tf.cast(images, tf.float16)
     labels = tf.cast(labels, tf.float16)
-  return images, labels
+  return images, labels ,reshaped_image
 
 
 def inputs(eval_data):
@@ -176,13 +176,23 @@ def inputs(eval_data):
   if not FLAGS.data_dir:
     raise ValueError('Please supply a data_dir')
   data_dir = os.path.join(FLAGS.data_dir, 'data')
-  images, labels = cifar10_input.inputs(eval_data=eval_data,
+  images, labels ,reshaped_image= cifar10_input.inputs(eval_data=eval_data,
                                         data_dir=data_dir,
                                         batch_size=FLAGS.batch_size)
   if FLAGS.use_fp16:
     images = tf.cast(images, tf.float16)
     labels = tf.cast(labels, tf.float16)
-  return images, labels
+  return images, labels,reshaped_image
+
+
+def multiply_sliced_input(img, outdir, imageWidth,imageHeight,sliceWidth,sliceHeight):
+    images,reshaped_image= cifar10_input.multiply_sliced_input(img, outdir, 
+                                                     imageWidth, 
+                                                     imageHeight,
+                                                     sliceWidth,
+                                                     sliceHeight,
+                                                     batch_size=FLAGS.batch_size)
+    return images,reshaped_image
 
 
 def inference(images):
@@ -274,6 +284,11 @@ def inference(images):
 
   return softmax_linear
 
+def inference_eval(images):
+
+  images=tf.image.per_image_standardization(images[0])
+  images=tf.expand_dims(images,0)
+  return inference(images)
 
 def loss(logits, labels):
   """Add L2Loss to all the trainable variables.
